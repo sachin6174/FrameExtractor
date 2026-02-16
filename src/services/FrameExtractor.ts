@@ -1,5 +1,7 @@
-import { NativeVideoFrames } from '@mgcrea/react-native-video-frames';
+import { NativeModules } from 'react-native';
 import RNFS from 'react-native-fs';
+
+const { VideoFrameExtractor: NativeExtractor } = NativeModules;
 
 export interface ExtractionResult {
   success: boolean;
@@ -11,11 +13,6 @@ export interface ExtractionResult {
 export const FrameExtractor = {
   /**
    * Extracts frames from a video.
-   * @param videoUri Path to the video file
-   * @param outputDir Directory where frames will be saved
-   * @param options Extraction options (fps or "all")
-   * @param duration Video duration in seconds
-   * @param onProgress Progress callback
    */
   async extractFrames(
     videoUri: string,
@@ -31,43 +28,39 @@ export const FrameExtractor = {
         await RNFS.mkdir(outputDir);
       }
 
-      // Calculate timestamps
+      // Calculate timestamps in milliseconds
       const timestamps: number[] = [];
       const fps = options.mode === 'all' ? 30 : (options.fps || 1);
       const interval = 1 / fps;
 
       for (let t = 0; t <= duration; t += interval) {
-        // Timestamps should be in milliseconds for this library
-        timestamps.push(t * 1000);
+        timestamps.push(t * 1000); // Convert to milliseconds
       }
 
       const totalFrames = timestamps.length;
       if (onProgress) onProgress(`Preparing to extract ${totalFrames} frames...`);
 
-      // Extract in batches to avoid memory issues
+      // Extract in batches
       const batchSize = 10;
       let count = 0;
 
       for (let i = 0; i < totalFrames; i += batchSize) {
         const batch = timestamps.slice(i, i + batchSize);
-        // Signature: extractFrames(videoPath: string, times: number[], options?: ExtractFramesOptions): Promise<string[]>;
-        const results = await NativeVideoFrames.extractFrames(videoUri, batch, {
-          quality: 1.0,
-          precise: true
-        });
 
-        // The library saves frames to its own cache or returns paths.
-        // If it doesn't support destPath, we might need to move them.
-        // Let's check where it saves them. Usually it returns temporary paths.
+        try {
+          const paths = await NativeExtractor.extractFrames(
+            videoUri,
+            batch,
+            outputDir,
+            1.0 // quality
+          );
 
-        for (const tempPath of results) {
-          const filename = `frame_${(count + 1).toString().padStart(5, '0')}.png`;
-          const destPath = `${outputDir}/${filename}`;
-          await RNFS.moveFile(tempPath, destPath);
-          count++;
+          count += paths.length;
+          if (onProgress) onProgress(`Extracted ${count} / ${totalFrames} frames...`);
+        } catch (err: any) {
+          console.error('Batch extraction error:', err);
+          // Continue with next batch
         }
-
-        if (onProgress) onProgress(`Extracted ${count} / ${totalFrames} frames...`);
       }
 
       return { success: true, count, outputDir };
@@ -77,6 +70,6 @@ export const FrameExtractor = {
   },
 
   async cancelAll() {
-    // Not supported by current library
+    // Not implemented yet
   }
 };

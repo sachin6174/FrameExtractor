@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import Video from 'react-native-video';
-import DocumentPicker from 'react-native-document-picker';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { FrameExtractor } from './src/services/FrameExtractor';
 import { FileSystemUtils } from './src/utils/FileSystemUtils';
 import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
@@ -33,8 +33,13 @@ const App = () => {
   }, []);
 
   const requestPermissions = async () => {
-    if (Platform.OS === 'android') {
-      const result = await request(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
+    if (Platform.OS === 'ios') {
+      const result = await request(PERMISSIONS.IOS.PHOTO_LIBRARY);
+      if (result !== RESULTS.GRANTED) {
+        console.warn('Photo library permission denied');
+      }
+    } else if (Platform.OS === 'android') {
+      const result = await request(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE);
       if (result !== RESULTS.GRANTED) {
         console.warn('Storage permission denied');
       }
@@ -43,14 +48,22 @@ const App = () => {
 
   const pickVideo = async () => {
     try {
-      const res = await DocumentPicker.pick({
-        type: [DocumentPicker.types.video],
+      const result = await launchImageLibrary({
+        mediaType: 'video',
+        selectionLimit: 1,
       });
-      setVideoUri(res[0].uri);
-    } catch (err) {
-      if (!DocumentPicker.isCancel(err)) {
-        console.error(err);
+
+      if (result.didCancel) {
+        console.log('User cancelled video picker');
+      } else if (result.errorCode) {
+        console.error('ImagePicker Error: ', result.errorMessage);
+        Alert.alert('Error', result.errorMessage || 'Failed to pick video');
+      } else if (result.assets && result.assets[0].uri) {
+        setVideoUri(result.assets[0].uri);
       }
+    } catch (err: any) {
+      console.error(err);
+      Alert.alert('Error', err.message);
     }
   };
 
